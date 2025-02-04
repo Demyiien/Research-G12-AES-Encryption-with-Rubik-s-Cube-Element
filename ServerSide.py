@@ -3,7 +3,7 @@ import socket
 import select 
 import sys 
 '''Replace "thread" with "_thread" for python 3'''
-from thread import *
+from _thread import *
 
 """The first argument AF_INET is the address domain of the 
 socket. This is used when we have an Internet Domain with 
