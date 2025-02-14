@@ -1,7 +1,9 @@
 import sqlite3
+import os
 from datetime import datetime
 
-DATABASE_NAME = 'encrypted_data.db'
+# Force the database to be in the same directory as this file.
+DATABASE_NAME = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'encrypted_data.db')
 
 def init_db():
     """Initialize the SQLite database and create the table if it doesn't exist."""
@@ -44,7 +46,7 @@ def view_database():
     try:
         conn = sqlite3.connect(DATABASE_NAME)
         c = conn.cursor()
-        c.execute("SELECT * FROM encrypted_messages")
+        c.execute("SELECT id, encrypted_text, timestamp FROM encrypted_messages")
         rows = c.fetchall()
         
         print("\nDatabase Contents:")
