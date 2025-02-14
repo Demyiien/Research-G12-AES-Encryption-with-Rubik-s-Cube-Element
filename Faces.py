@@ -6,32 +6,95 @@ from database import clear_database, view_database
 import os
 import base64
 import hashlib
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+import string
+import time
 
-# Pre-agreed passphrase and key derivation for AES-GCM
+# Pre‐agreed passphrase for the dynamic substitution cipher
 PRE_AGREED_PASSPHRASE = "my_secure_passphrase"
+# Define an alphabet that includes letters, digits, punctuation, and space.
+ALPHABET = string.ascii_letters + string.digits + string.punctuation + " "
 
-def get_key():
-    return hashlib.sha256(PRE_AGREED_PASSPHRASE.encode('utf-8')).digest()
+def get_permutation(nonce: bytes):
+    """
+    Generates a permutation of ALPHABET based on a nonce and the pre‐agreed key.
+    The nonce is combined with the key and hashed to produce a seed, which then
+    is used to shuffle the alphabet deterministically.
+    """
+    seed = int.from_bytes(
+        hashlib.sha256(PRE_AGREED_PASSPHRASE.encode('utf-8') + nonce).digest(), 
+        'big'
+    )
+    rng = random.Random(seed)
+    permuted = list(ALPHABET)
+    rng.shuffle(permuted)
+    return permuted
 
-def encrypt_message(plaintext):
-    key = get_key()
-    aesgcm = AESGCM(key)
-    nonce = os.urandom(12)  # 12 bytes nonce for AES-GCM
-    ciphertext = aesgcm.encrypt(nonce, plaintext.encode('utf-8'), None)
-    # Store nonce and ciphertext together (base64-encoded)
-    return base64.b64encode(nonce + ciphertext).decode('utf-8')
+def encrypt_message(plaintext: str) -> str:
+    """
+    Encrypts the plaintext by generating a dynamic substitution mapping.
+    A random nonce is generated and used (with the pre‐agreed key) to shuffle the
+    alphabet. Each character is substituted based on the mapping.
+    The nonce (base64-encoded) is prepended to the ciphertext separated by a colon.
+    """
+    nonce = os.urandom(8)  # Generate an 8-byte nonce
+    permuted = get_permutation(nonce)
+    mapping = {a: b for a, b in zip(ALPHABET, permuted)}
+    # Encrypt: substitute each character using the mapping
+    ciphertext = ''.join(mapping.get(ch, ch) for ch in plaintext)
+    # Prepend the nonce (encoded in base64) for later decryption
+    nonce_b64 = base64.b64encode(nonce).decode('utf-8')
+    return nonce_b64 + ":" + ciphertext
 
-def decrypt_message(encrypted_text):
-    key = get_key()
-    aesgcm = AESGCM(key)
-    data = base64.b64decode(encrypted_text)
-    nonce = data[:12]
-    ciphertext = data[12:]
-    plaintext = aesgcm.decrypt(nonce, ciphertext, None).decode('utf-8')
+def decrypt_message(encrypted_text: str) -> str:
+    """
+    Decrypts the encrypted text by extracting the nonce and regenerating the
+    substitution mapping. The mapping is then inverted to recover the original text.
+    """
+    try:
+        nonce_b64, ciphertext = encrypted_text.split(":", 1)
+    except ValueError:
+        raise ValueError("Invalid encrypted text format; missing nonce separator.")
+    nonce = base64.b64decode(nonce_b64)
+    permuted = get_permutation(nonce)
+    reverse_mapping = {b: a for a, b in zip(ALPHABET, permuted)}
+    plaintext = ''.join(reverse_mapping.get(ch, ch) for ch in ciphertext)
     return plaintext
 
-# The following Rubik's Cube constants and functions are retained for the visual display.
+# Animation functions for database view
+
+def animate_text(text: str) -> str:
+    """
+    Returns an animated version of the text by cyclically shifting it.
+    The shift amount is based on the current time, so the output changes every second.
+    """
+    if not text:
+        return text
+    shift = int(time.time()) % len(text)
+    return text[shift:] + text[:shift]
+
+def animate_database_view():
+    """
+    Continuously displays the database records, animating the encrypted text.
+    The stored ciphertext remains unchanged; only the display output is animated.
+    Press Ctrl+C to exit the animated view.
+    """
+    try:
+        while True:
+            records = database.get_records()
+            os.system('cls' if os.name == 'nt' else 'clear')
+            print("Database Contents (Animated):")
+            print("ID | Encrypted Text (Animated) | Timestamp")
+            print("-------------------------------------------------")
+            for record in records:
+                rec_id, encrypted_text, timestamp = record
+                animated_text = animate_text(encrypted_text)
+                print(f"{rec_id} | {animated_text} | {timestamp}")
+            time.sleep(1)
+    except KeyboardInterrupt:
+        print("\nExiting animated database view.")
+
+# The following constants and functions provide a Rubik's Cube visual display,
+# maintaining the thematic element of an ever-changing, scrambled face.
 WIDTH, HEIGHT = 400, 400
 ROWS, COLS = 3, 3
 SQUARE_SIZE = WIDTH // COLS
@@ -83,18 +146,19 @@ def handle_input():
             print("Conversation quit command received. Exiting.")
             break
         elif input_text.lower() == "database-view":
-            view_database()
+            # Launch the animated database view (press Ctrl+C to exit)
+            animate_database_view()
             continue
         elif input_text.lower() == "database-clear":
             clear_database()
             print("Database cleared.")
             continue
         else:
-            # Encrypt the message
+            # Encrypt the message with our dynamic substitution cipher
             encrypted = encrypt_message(input_text)
             database.save_to_db(encrypted)
             print("Encrypted text:", encrypted)
-            # If automatic decryption is active, immediately decrypt and show the original text
+            # If automatic decryption is active, immediately decrypt and display the original text
             if not manual_decryption:
                 try:
                     decrypted = decrypt_message(encrypted)
@@ -108,7 +172,7 @@ def main():
 
     face = generate_face()
 
-    # Start the input thread (for entering messages and commands)
+    # Start the input thread for entering messages and commands
     input_thread = threading.Thread(target=handle_input, daemon=True)
     input_thread.start()
 
