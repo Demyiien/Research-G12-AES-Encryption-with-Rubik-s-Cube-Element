@@ -1,61 +1,91 @@
-import socket
-from Faces import encrypt_message, decrypt_message
-import database
+import sqlite3
+from datetime import datetime
 
-manual_decryption = False  # default is automatic decryption
+DATABASE_NAME = 'encrypted_data.db'
 
-def main():
-    global manual_decryption
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.bind(('localhost', 9999))
-    server.listen()
-    
-    client, addr = server.accept()
-    print("Connected by", addr)
-    
-    database.init_db()
-    
-    done = False
-    while not done:
-        msg = client.recv(4096).decode('utf-8')
-        if msg.lower() == "convo-quit":
-            print("Conversation quit command received from client.")
-            done = True
-            client.send("convo-quit".encode('utf-8'))
-            continue
-        
-        # Decrypt the incoming message if in automatic mode
-        try:
-            if not manual_decryption:
-                decrypted = decrypt_message(msg)
-                print("Decrypted message from client:", decrypted)
-            else:
-                print("Encrypted message from client:", msg)
-        except Exception as e:
-            print("Error during decryption:", e)
-        
-        response = input("Message: ")
-        
-        # Process control commands locally
-        if response.lower() == "decrypt-manual-on":
-            manual_decryption = True
-            print("Manual decryption mode activated.")
-            continue
-        elif response.lower() == "decrypt-manual-off":
-            manual_decryption = False
-            print("Automatic decryption mode activated.")
-            continue
-        elif response.lower() == "convo-quit":
-            client.send("convo-quit".encode('utf-8'))
-            done = True
-            continue
-        
-        encrypted_response = encrypt_message(response)
-        database.save_to_db(encrypted_response)
-        client.send(encrypted_response.encode('utf-8'))
-    
-    client.close()
-    server.close()
+def init_db():
+    """Initialize the SQLite database and create the table if it doesn't exist."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        c = conn.cursor()
+        c.execute('''CREATE TABLE IF NOT EXISTS encrypted_messages
+                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                      encrypted_text TEXT,
+                      timestamp DATETIME)''')
+        conn.commit()
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        if conn:
+            conn.close()
 
-if __name__ == "__main__":
-    main()
+def save_to_db(encrypted_text):
+    """Save the encrypted text and timestamp to the database."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        c = conn.cursor()
+        c.execute('''INSERT INTO encrypted_messages 
+                     (encrypted_text, timestamp)
+                     VALUES (?, ?)''',
+                  (encrypted_text, datetime.now()))
+        conn.commit()
+        print("Data saved to database successfully!")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+def view_database():
+    """View all records in the database (one-time display)."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        c = conn.cursor()
+        c.execute("SELECT * FROM encrypted_messages")
+        rows = c.fetchall()
+        
+        print("\nDatabase Contents:")
+        print("ID | Encrypted Text | Timestamp")
+        print("--------------------------------")
+        for row in rows:
+            print(f"{row[0]} | {row[1]} | {row[2]}")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+def clear_database():
+    """Delete all records from the database."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        c = conn.cursor()
+        c.execute("DELETE FROM encrypted_messages")
+        c.execute("DELETE FROM sqlite_sequence WHERE name='encrypted_messages'")
+        conn.commit()
+        print("All records deleted successfully.")
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+    finally:
+        if conn:
+            conn.close()
+
+def get_records():
+    """Return all records from the database as a list of tuples."""
+    conn = None
+    try:
+        conn = sqlite3.connect(DATABASE_NAME)
+        c = conn.cursor()
+        c.execute("SELECT id, encrypted_text, timestamp FROM encrypted_messages")
+        rows = c.fetchall()
+        return rows
+    except sqlite3.Error as e:
+        print(f"Database error: {e}")
+        return []
+    finally:
+        if conn:
+            conn.close()
