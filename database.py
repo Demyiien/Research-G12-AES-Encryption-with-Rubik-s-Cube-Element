@@ -10,7 +10,6 @@ def init_db():
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS encrypted_messages
                      (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      original_text TEXT,
                       encrypted_text TEXT,
                       timestamp DATETIME)''')
         conn.commit()
@@ -20,15 +19,15 @@ def init_db():
         if conn:
             conn.close()
 
-def save_to_db(original_text, encrypted_text):
-    """Save the original and encrypted text to the database."""
+def save_to_db(encrypted_text):
+    """Save the encrypted text and timestamp to the database."""
     try:
         conn = sqlite3.connect(DATABASE_NAME)
         c = conn.cursor()
         c.execute('''INSERT INTO encrypted_messages 
-                     (original_text, encrypted_text, timestamp)
-                     VALUES (?, ?, ?)''',
-                  (original_text, encrypted_text, datetime.now()))
+                     (encrypted_text, timestamp)
+                     VALUES (?, ?)''',
+                  (encrypted_text, datetime.now()))
         conn.commit()
         print("Data saved to database successfully!")
     except sqlite3.Error as e:
@@ -46,10 +45,10 @@ def view_database():
         rows = c.fetchall()
         
         print("\nDatabase Contents:")
-        print("ID | Original Text | Encrypted Text | Timestamp")
-        print("------------------------------------------------")
+        print("ID | Encrypted Text |")
+        print("--------------------------------")
         for row in rows:
-            print(f"{row[0]} | {row[1]} | {row[2]} | {row[3]}")
+            print(f"{row[0]} | {row[1]} | {row[2]}")
     except sqlite3.Error as e:
         print(f"Database error: {e}")
     finally:
