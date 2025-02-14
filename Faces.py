@@ -82,8 +82,8 @@ def animate_database_view():
         while True:
             records = database.get_records()
             os.system('cls' if os.name == 'nt' else 'clear')
-            print("Database Contents (Animated):")
-            print("ID | Encrypted Text (Animated) | Timestamp")
+            print("Database Contents:")
+            print("ID | Encrypted Text | Timestamp")
             print("-------------------------------------------------")
             for record in records:
                 rec_id, encrypted_text, timestamp = record
