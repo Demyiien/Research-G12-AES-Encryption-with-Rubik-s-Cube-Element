@@ -14,51 +14,65 @@ PRE_AGREED_PASSPHRASE = "my_secure_passphrase"
 # Define an alphabet that includes letters, digits, punctuation, and space.
 ALPHABET = string.ascii_letters + string.digits + string.punctuation + " "
 
-def get_permutation(nonce: bytes):
-    """
-    Generates a permutation of ALPHABET based on a nonce and the pre‐agreed key.
-    The nonce is combined with the key and hashed to produce a seed, which then
-    is used to shuffle the alphabet deterministically.
-    """
-    seed = int.from_bytes(
-        hashlib.sha256(PRE_AGREED_PASSPHRASE.encode('utf-8') + nonce).digest(), 
-        'big'
-    )
-    rng = random.Random(seed)
-    permuted = list(ALPHABET)
-    rng.shuffle(permuted)
-    return permuted
-
 def encrypt_message(plaintext: str) -> str:
     """
-    Encrypts the plaintext by generating a dynamic substitution mapping.
-    A random nonce is generated and used (with the pre‐agreed key) to shuffle the
-    alphabet. Each character is substituted based on the mapping.
-    The nonce (base64-encoded) is prepended to the ciphertext separated by a colon.
+    Encrypts the plaintext by generating an independent random permutation for each character.
+    For every character (if it is in ALPHABET), a permutation is generated using a seed derived
+    from the pre‐agreed passphrase, a random nonce, and the character's index. The encrypted
+    character is the character in the permutation at the same index as in ALPHABET.
+    
+    The nonce (base64‑encoded) is prepended (with a colon separator) to the ciphertext.
     """
     nonce = os.urandom(8)  # Generate an 8-byte nonce
-    permuted = get_permutation(nonce)
-    mapping = {a: b for a, b in zip(ALPHABET, permuted)}
-    # Encrypt: substitute each character using the mapping
-    ciphertext = ''.join(mapping.get(ch, ch) for ch in plaintext)
-    # Prepend the nonce (encoded in base64) for later decryption
     nonce_b64 = base64.b64encode(nonce).decode('utf-8')
+    ciphertext_chars = []
+    for i, ch in enumerate(plaintext):
+        if ch in ALPHABET:
+            # For each character, generate a permutation specific to its index.
+            seed = int.from_bytes(
+                hashlib.sha256(PRE_AGREED_PASSPHRASE.encode('utf-8') + nonce + str(i).encode('utf-8')).digest(), 
+                'big'
+            )
+            rng = random.Random(seed)
+            permuted = list(ALPHABET)
+            rng.shuffle(permuted)
+            # Instead of a cyclic shift, use the permutation mapping:
+            idx = ALPHABET.index(ch)
+            ciphertext_chars.append(permuted[idx])
+        else:
+            ciphertext_chars.append(ch)
+    ciphertext = ''.join(ciphertext_chars)
     return nonce_b64 + ":" + ciphertext
 
 def decrypt_message(encrypted_text: str) -> str:
     """
-    Decrypts the encrypted text by extracting the nonce and regenerating the
-    substitution mapping. The mapping is then inverted to recover the original text.
+    Decrypts the text produced by encrypt_message.
+    The nonce is extracted and for each character (if in ALPHABET), the same permutation is regenerated
+    (using the pre‐agreed passphrase, nonce, and character's index) and the original character is recovered
+    by finding the index of the encrypted character in that permutation.
     """
     try:
         nonce_b64, ciphertext = encrypted_text.split(":", 1)
     except ValueError:
         raise ValueError("Invalid encrypted text format; missing nonce separator.")
     nonce = base64.b64decode(nonce_b64)
-    permuted = get_permutation(nonce)
-    reverse_mapping = {b: a for a, b in zip(ALPHABET, permuted)}
-    plaintext = ''.join(reverse_mapping.get(ch, ch) for ch in ciphertext)
-    return plaintext
+    plaintext_chars = []
+    for i, ch in enumerate(ciphertext):
+        if ch in ALPHABET:
+            seed = int.from_bytes(
+                hashlib.sha256(PRE_AGREED_PASSPHRASE.encode('utf-8') + nonce + str(i).encode('utf-8')).digest(), 
+                'big'
+            )
+            rng = random.Random(seed)
+            permuted = list(ALPHABET)
+            rng.shuffle(permuted)
+            # Find the index of the encrypted character in the permutation; that's the original index in ALPHABET.
+            idx = permuted.index(ch)
+            plaintext_chars.append(ALPHABET[idx])
+        else:
+            plaintext_chars.append(ch)
+    return ''.join(plaintext_chars)
+
 
 # Animation functions for database view
 
@@ -154,7 +168,7 @@ def handle_input():
             print("Database cleared.")
             continue
         else:
-            # Encrypt the message with our dynamic substitution cipher
+            # Encrypt the message with our new dynamic substitution cipher
             encrypted = encrypt_message(input_text)
             database.save_to_db(encrypted)
             print("Encrypted text:", encrypted)
